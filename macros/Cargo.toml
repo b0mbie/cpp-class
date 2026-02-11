@@ -1,0 +1,22 @@
+[package]
+name = "cpp-class-macros"
+version = "0.1.0"
+edition = "2024"
+authors = ["b0mbie"]
+license = "MIT"
+
+[lib]
+proc-macro = true
+
+[dependencies.proc-macro2]
+version = "1"
+default-features = false
+
+[dependencies.quote]
+version = "1"
+default-features = false
+
+[dependencies.syn]
+version = "2"
+default-features = false
+features = ["parsing", "proc-macro", "printing", "full"]

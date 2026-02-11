@@ -1,0 +1,13 @@
+[package]
+name = "cpp-class"
+version = "0.1.0"
+edition = "2024"
+authors = ["b0mbie"]
+license = "MIT"
+
+[dependencies.cpp-class-macros]
+path = "./macros"
+
+[workspace]
+resolver = "3"
+members = ["macros"]
