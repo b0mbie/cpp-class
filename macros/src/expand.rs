@@ -238,6 +238,7 @@ this restriction is a current limitation of the macro implementation and may be 
 							)
 						}
 						vtable_definition = quote! {
+							#[repr(C)]
 							#vis struct #name_vt<#own_vtable_params> #own_vtable_where {
 								#(#vtable_fields)*
 							}
