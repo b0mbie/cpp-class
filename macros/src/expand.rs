@@ -151,7 +151,21 @@ impl Invocation {
 			ClassKind::NonVirt { base, rest, non_virt: fields } => {
 				let inherited_fields = base.into_iter()
 					.chain(rest.iter().flat_map(move |i| i.iter()))
-					.map(move |i| i.field(crate_path));
+					.map(move |i| i.field(crate_path))
+					;
+				let mut params_for_impls = Punctuated::<_, Token![,]>::new();
+				for param in params.iter() {
+					let p = match param {
+						GenericParam::Const(p) => p.to_token_stream(),
+						GenericParam::Lifetime(p) => p.to_token_stream(),
+						GenericParam::Type(TypeParam {
+							attrs, ident, colon_token, bounds, ..
+						}) => {
+							quote! { #(#attrs)* #ident #colon_token #bounds }
+						}
+					};
+					params_for_impls.push(p);
+				}
 				quote! {
 					#[repr(C)]
 					#(#attrs)*
@@ -160,7 +174,7 @@ impl Invocation {
 						#(#fields,)*
 					}
 
-					unsafe impl<#params> #crate_path::NonVirtual for #name #generic_args #where_clause {
+					unsafe impl<#params_for_impls> #crate_path::NonVirtual for #name #generic_args #where_clause {
 						type This = Self;
 					}
 				}
@@ -249,18 +263,28 @@ this restriction is a current limitation of the macro implementation and may be 
 				};
 				let data_fields_rest = rest.iter().flat_map(move |i| i.iter().map(move |i| i.field(crate_path)));
 
-				let data_has_generics = !non_virt.is_empty() || data_fields_first.is_some();
-				let data_params = data_has_generics.then_some(params);
-				let data_args = data_has_generics.then_some(generic_args);
-				let data_clause = data_has_generics.then_some(where_clause);
+				let data_has_fields = !non_virt.is_empty() || data_fields_first.is_some();
+				let data_params = data_has_fields.then_some(params);
+				let data_args = data_has_fields.then_some(generic_args);
+				let data_clause = data_has_fields.then_some(where_clause);
+
+				let data_repr = if data_has_fields {
+					quote! { C }
+				} else {
+					quote! { transparent }
+				};
+
+				// Fix empty `Data` struct not being considered FFI-safe in the final struct.
+				let class_data_field = data_has_fields.then(|| quote! {
+					pub data: #name_data #data_args,
+				});
 
 				quote! {
 					#[repr(C)]
 					#(#attrs)*
 					#vis struct #name<#params> #where_clause {
 						pub vtable: #crate_path::VTablePtr<#name_vt #generic_args>,
-						pub data: #name_data #data_args,
-						
+						#class_data_field
 					}
 					unsafe impl<#params>
 						#crate_path::Virtual
@@ -274,7 +298,7 @@ this restriction is a current limitation of the macro implementation and may be 
 
 					#vtable_definition
 
-					#[repr(C)]
+					#[repr(#data_repr)]
 					#vis struct #name_data<#data_params> #data_clause {
 						#data_fields_first
 						#(#data_fields_rest,)*
