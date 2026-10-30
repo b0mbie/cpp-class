@@ -11,11 +11,22 @@ mod virtual_fn;
 /// use instead of `Self`.
 #[macro_export]
 macro_rules! new_vtable_self {
+	{
+		@init
+		()
+		($($t:tt)*)
+	} => {$($t)*};
+	{
+		@init
+		($($i:tt)+)
+		($($t:tt)*)
+	} => {$($i)*};
+
 	(
 		$type:ident {
 			$(
 				$(#[$set_attr:meta])*
-				$func_name:ident
+				$func_name:ident $(: $or_init:expr)?
 			),*
 			$(,)?
 		}
@@ -23,8 +34,10 @@ macro_rules! new_vtable_self {
 		$type {
 			$(
                 $(#[$set_attr])*
-				$func_name: Self::$func_name
-			),*
+				$func_name: $crate::new_vtable_self! {
+					@init ($($or_init)?) (Self::$func_name)
+				},
+			)*
 		}
 	};
 
@@ -39,8 +52,10 @@ macro_rules! new_vtable_self {
 		$type {
 			$(
                 $(#[$set_attr])*
-				$func_name: $self::$func_name
-			),*
+				$func_name: $crate::new_vtable_self! {
+					@init ($($or_init)?) (Self::$func_name)
+				},
+			)*
 		}
 	};
 }
