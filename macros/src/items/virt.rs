@@ -1,4 +1,7 @@
-use proc_macro2::TokenStream as TokenStream2;
+use proc_macro2::{
+	TokenStream as TokenStream2,
+	TokenTree,
+};
 use syn::{
 	parse::{
 		Parse, ParseStream,
@@ -23,8 +26,29 @@ pub struct Item {
 }
 
 pub enum Kind {
+	Destructor(Destructor),
 	Fn(VirtFn),
 	Use(super::Use),
+}
+
+pub struct Destructor {
+	pub field_name: Ident,
+}
+impl Parse for Destructor {
+	fn parse(input: ParseStream) -> Result<Self> {
+		let field_name = input.parse()?;
+					
+		// TODO: Recoverable error!
+		let params;
+		let _ = parenthesized!(params in input);
+		if let Ok(first) = params.parse::<TokenTree>() {
+			return Err(syn::Error::new_spanned(first, "virtual destructors take no parameters"))
+		}
+
+		Ok(Self {
+			field_name,
+		})
+	}
 }
 
 pub struct VirtFn {

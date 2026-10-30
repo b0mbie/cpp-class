@@ -116,3 +116,12 @@ cc_macros! {
 		cc = "C-unwind";
 	}
 }
+
+// HACK: Have to get around the compiler not allowing to refer to a `#[macro_export]`ed macro from inside the crate!
+use crate::This;
+pub type Destructor<T> = non_variadic_impl! {
+	pre = {unsafe extern};
+	post = {
+		fn(this: This<T>)
+	};
+};

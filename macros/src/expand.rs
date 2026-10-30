@@ -63,7 +63,9 @@ fn copy_impl(
 	where_clause: Option<&WhereClause>,
 ) -> TokenStream2 {
 	quote! {
+		#[automatically_derived]
 		impl<#params> Copy for #name #args #where_clause {}
+		#[automatically_derived]
 		impl<#params> Clone for #name #args #where_clause {
 			fn clone(&self) -> Self { *self }
 		}
@@ -127,6 +129,7 @@ impl Invocation {
 			} = self;
 			let base_ty = &inh.base.path;
 			Ok(quote! {
+				#[automatically_derived]
 				unsafe impl<#params> #crate_path::Inherits<#base_ty> for #name #generic_args #where_clause {}
 				#definition
 			})
@@ -174,6 +177,7 @@ impl Invocation {
 						#(#fields,)*
 					}
 
+					#[automatically_derived]
 					unsafe impl<#params_for_impls> #crate_path::NonVirtual for #name #generic_args #where_clause {
 						type This = Self;
 					}
@@ -187,8 +191,37 @@ impl Invocation {
 
 				let inherently_virtual = !virt.is_empty();
 
+				let has_destructor = {
+					enum Destructors {
+						None,
+						One,
+					}
+
+					let mut destructors = Destructors::None;
+					for item in virt {
+						let virt::Item { kind, .. } = item;
+						if let virt::Kind::Destructor(virt::Destructor {
+							field_name,
+						}) = kind {
+							destructors = match destructors {
+								Destructors::None => Destructors::One,
+								Destructors::One => {
+									// TODO: Recoverable error!
+									bail!(field_name.span(), "classes may only have one virtual destructor")
+								}
+							}
+						}
+					}
+
+					match destructors {
+						Destructors::None => false,
+						Destructors::One => true,
+					}
+				};
+
 				let vtable_definition;
 				let data_fields_first;
+				let virtual_where_clause;
 				{
 					let own_vtable_params = inherently_virtual.then_some(params);
 					let own_vtable_where = where_clause.filter(move |_| inherently_virtual);
@@ -196,6 +229,14 @@ impl Invocation {
 						.map(move |item| {
 							let virt::Item { attrs, vis, kind } = item;
 							match kind {
+								virt::Kind::Destructor(virt::Destructor {
+									field_name,
+								}) => {
+									quote! {
+										#(#attrs)*
+										#vis #field_name: #crate_path::Destructors<#name #generic_args>,
+									}
+								}
 								virt::Kind::Fn(virt::VirtFn {
 									name: virt_fn_name, inputs, output,
 								}) => {
@@ -244,6 +285,18 @@ this restriction is a current limitation of the macro implementation and may be 
 						data_fields_first = Some(quote! {
 							#base_vis #base_field: <#base_ty as #crate_path::Virtual>::Data,
 						});
+						virtual_where_clause = match (has_destructor, where_clause) {
+							(false, None) => None,
+							(true, None) => Some(quote! {
+								where #base_ty: #crate_path::HasNoDestructor,
+							}),
+							(false, Some(clause)) => Some(clause.to_token_stream()),
+							(true, Some(WhereClause { where_token, predicates })) => Some(quote! {
+								#where_token
+									#base_ty: #crate_path::HasNoDestructor,
+								#predicates
+							}),
+						};
 					} else {
 						if !inherently_virtual {
 							bail!(
@@ -259,6 +312,7 @@ this restriction is a current limitation of the macro implementation and may be 
 							#vtable_copy_impl
 						};
 						data_fields_first = None;
+						virtual_where_clause = where_clause.map(|c| c.to_token_stream());
 					}
 				};
 				let data_fields_rest = rest.iter().flat_map(move |i| i.iter().map(move |i| i.field(crate_path)));
@@ -279,6 +333,16 @@ this restriction is a current limitation of the macro implementation and may be 
 					pub data: #name_data #data_args,
 				});
 
+				let no_destructor_impl = (!has_destructor).then(|| quote! {
+					#[diagnostic::do_not_recommend]
+					#[automatically_derived]
+					unsafe impl<#params>
+						#crate_path::HasNoDestructor
+						for #name #generic_args
+					#where_clause
+					{}
+				});
+
 				quote! {
 					#[repr(C)]
 					#(#attrs)*
@@ -286,16 +350,18 @@ this restriction is a current limitation of the macro implementation and may be 
 						pub vtable: #crate_path::VTablePtr<#name_vt #generic_args>,
 						#class_data_field
 					}
+					#[automatically_derived]
 					unsafe impl<#params>
 						#crate_path::Virtual
 						for #name #generic_args
-					#where_clause
+					#virtual_where_clause
 					{
 						type This = Self;
 						type VTable = #name_vt #generic_args;
 						type Data = #name_data #data_args;
 					}
 
+					#no_destructor_impl
 					#vtable_definition
 
 					#[repr(#data_repr)]

@@ -1,4 +1,6 @@
 mod cc;
+pub use cc::*;
+
 mod virtual_call;
 mod virtual_fn;
 

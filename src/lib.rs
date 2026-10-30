@@ -14,7 +14,10 @@ macro_rules! class {
 }
 
 mod macros;
+pub use macros::*;
 
+mod destructors;
+pub use destructors::*;
 mod inheritance;
 pub use inheritance::*;
 mod non_virt;

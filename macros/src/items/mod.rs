@@ -43,6 +43,7 @@ impl Parse for Items {
 		}
 
 		enum ItemKind {
+			Destructor(virt::Destructor),
 			VirtFn(virt::VirtFn),
 			NonVirtField(non_virt::Field),
 			VirtUse(Use),
@@ -56,6 +57,9 @@ impl Parse for Items {
 				if lookahead.peek(Token![use]) {
 					let _: Token![use] = input.parse()?;
 					Ok(Self::VirtUse(input.parse()?))
+				} else if lookahead.peek(Token![~]) {
+					let _: Token![~] = input.parse()?;
+					Ok(Self::Destructor(input.parse()?))
 				} else {
 					input.parse().map(Self::VirtFn)
 				}
@@ -85,6 +89,12 @@ impl Parse for Items {
 		while !input.is_empty() {
 			let Item { attrs, vis, kind, .. } = input.parse()?;
 			match kind {
+				ItemKind::Destructor(inner) => {
+					virt.push(virt::Item {
+						attrs, vis,
+						kind: virt::Kind::Destructor(inner),
+					});
+				}
 				ItemKind::VirtFn(inner) => {
 					virt.push(virt::Item {
 						attrs, vis,
